@@ -1,0 +1,34 @@
+[Unit]
+Description=Pricefly Next.js
+After=network.target mongod.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=pricefly
+Group=pricefly
+WorkingDirectory=/srv/apps/pricefly
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=NODE_OPTIONS=--max-old-space-size=768
+EnvironmentFile=/srv/apps/pricefly/.env.production
+# PORT is assigned after checking the server's listening ports.
+ExecStart=/usr/bin/node /srv/apps/pricefly/node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port ${PORT}
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+KillSignal=SIGTERM
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+MemoryAccounting=true
+MemoryHigh=768M
+MemoryMax=1G
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
