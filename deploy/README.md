@@ -15,8 +15,33 @@ No GitHub, em Settings > Secrets and variables > Actions, configure:
 
 | Secret | Valor |
 | --- | --- |
+| `VPS_HOST` | `187.41.103.39` |
+| `VPS_USER` | `deploy` |
 | `VPS_SSH_KEY` | Chave privada de deploy ja autorizada para o usuario deploy |
 | `VPS_KNOWN_HOSTS` | Chave publica SSH do servidor com hostname 187.41.103.39, conferida no VPS |
+
+Os valores dos secrets ja cadastrados nao podem ser exibidos pelo GitHub.
+Neste computador, a chave `C:\Users\shoum\.ssh\feedsync_github_actions` corresponde
+a uma chave ja autorizada no VPS. Para copiar a chave privada no PowerShell,
+sem imprimi-la no terminal:
+
+```powershell
+Get-Content "$env:USERPROFILE\.ssh\feedsync_github_actions" -Raw | Set-Clipboard
+```
+
+Cole o conteudo completo, incluindo BEGIN/END OPENSSH PRIVATE KEY, no secret
+`VPS_SSH_KEY` deste repositorio. Nao use o arquivo `.pub` e nao envie a chave por chat.
+Para copiar apenas a entrada ED25519 do servidor ja conferida no known_hosts local:
+
+```powershell
+$entry = @(ssh-keygen -F 187.41.103.39 -f "$env:USERPROFILE\.ssh\known_hosts") |
+  Where-Object { $_ -match '^\S+\s+ssh-ed25519\s+' }
+if (@($entry).Count -ne 1) { throw 'Entrada ED25519 ausente ou ambigua; confira a chave no VPS.' }
+$entry | Set-Clipboard
+```
+
+Cole o resultado em `VPS_KNOWN_HOSTS`. Essa chave publica identifica o servidor;
+a chave privada anterior identifica o usuario de deploy. Sao valores diferentes.
 
 Nenhuma variavel MongoDB, senha SMTP ou credencial de administrador vai para o GitHub.
 

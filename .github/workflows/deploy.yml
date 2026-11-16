@@ -37,10 +37,14 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           set -euo pipefail
           test -n "$SSH_KEY" || { echo 'Configure VPS_SSH_KEY'; exit 1; }
           test -n "$KNOWN_HOSTS" || { echo 'Configure VPS_KNOWN_HOSTS'; exit 1; }
+          test -n "$VPS_HOST" || { echo 'Configure VPS_HOST'; exit 1; }
+          test -n "$VPS_USER" || { echo 'Configure VPS_USER'; exit 1; }
           install -d -m 700 "$HOME/.ssh"
           printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/pricefly_deploy"
           printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
@@ -48,10 +52,12 @@ jobs:
       - name: Build and deploy exact commit
         env:
           DEPLOY_SHA: ${{ github.sha }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           ssh -i "$HOME/.ssh/pricefly_deploy" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
-            deploy@187.41.103.39 "sudo -n /usr/local/bin/deploy-pricefly $DEPLOY_SHA"
+            "$VPS_USER@$VPS_HOST" "sudo -n /usr/local/bin/deploy-pricefly $DEPLOY_SHA"
       - name: Verify public HTTPS
         run: curl --fail --silent --show-error --retry 5 --retry-delay 3 https://pricefly.shop/ -o /dev/null
