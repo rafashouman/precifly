@@ -2,18 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import Icon from './Icon';
 
 export function Brand({ inverted = false }: { inverted?: boolean }) {
   return (
     <Link href="/" className={`pf-brand ${inverted ? 'pf-brand--light' : ''}`} aria-label="Pricefly, página inicial">
-      <span className="pf-brand-mark" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-          <path d="M5 21.5V6.5h8.5c5.2 0 8 2.7 8 6.4 0 3.8-2.9 6.3-8 6.3H10" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="m16 5 7 3-6 4" fill="currentColor" />
-        </svg>
-      </span>
-      <span className="pf-brand-word">price<span>fly</span><span className="pf-brand-dot">.</span></span>
+      <Image className="pf-brand-logo" src="/images/logo-big.png" alt="PriceFly" width={1550} height={310} sizes="(max-width: 560px) 175px, 220px" priority={!inverted} />
     </Link>
   );
 }

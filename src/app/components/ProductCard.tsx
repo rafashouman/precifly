@@ -3,24 +3,8 @@
 import { useState } from 'react';
 import Icon from './Icon';
 
-export type Product = {
-  id: string;
-  title: string;
-  category: string;
-  price: string | number;
-  installments?: string;
-  image: string;
-  link: string;
-  rating?: string;
-  numbersRating?: string;
-  badge?: string;
-  badgeBg?: string;
-  badgeColor?: string;
-  partnerName?: string;
-  partnerLogoUrl?: string;
-  customCTA?: string;
-  isHighlighted?: boolean;
-};
+import type { Product } from '@/lib/types';
+export type { Product } from '@/lib/types';
 
 export function formattedPrice(price: string | number) {
   if (typeof price === 'number') return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);

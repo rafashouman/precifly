@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '@/firebase/config';
 import CategoryMenu from '@/app/components/CategoryMenu';
 import ProductCard, { type Product, formattedPrice, validOfferUrl } from '@/app/components/ProductCard';
 import Footer from '@/app/components/Footer';
@@ -39,8 +37,18 @@ export default function Home() {
     let mounted = true;
     async function loadProducts() {
       try {
-        const snapshot = await getDocs(collection(db, 'products'));
-        if (mounted) setProducts(snapshot.docs.map(item => ({ ...item.data(), id: item.id })) as Product[]);
+        const allProducts: Product[] = [];
+        let page = 1;
+        let pages = 1;
+        do {
+          const response = await fetch('/api/products?limit=100&page=' + page, { cache: 'no-store' });
+          if (!response.ok) throw new Error('Não foi possível carregar as ofertas.');
+          const data = await response.json();
+          allProducts.push(...data.products);
+          pages = data.pages;
+          page++;
+        } while (mounted && page <= pages);
+        if (mounted) setProducts(allProducts);
       } catch (error) {
         console.error('Não foi possível carregar as ofertas:', error);
         if (mounted) setLoadError(true);
@@ -86,13 +94,13 @@ export default function Home() {
           <div className="pf-shell pf-hero-grid">
             <div className="pf-hero-copy">
               <div className="pf-eyebrow pf-eyebrow-light"><span className="pf-pulse" /> SUA PRÓXIMA BOA DESCOBERTA</div>
-              <h1>Boas ofertas.<br /><em>Grandes</em><br />descobertas<span className="pf-hero-period">.</span></h1>
-              <p>Encontrar uma ótima oportunidade pode ser simples. Explore ofertas de lojas parceiras e descubra escolhas que combinam com você.</p>
+              <h1>Transformamos<br />promoções comuns<br />em <em>ofertas irresistíveis</em><span className="pf-hero-period">.</span></h1>
+              <p>Descubra as melhores oportunidades dos nossos parceiros ou leve as ofertas da sua empresa mais longe.</p>
               <div className="pf-hero-actions">
                 <button className="pf-btn pf-btn-accent pf-btn-lg" onClick={() => offersRef.current?.scrollIntoView({ behavior: 'smooth' })}>
                   Explorar ofertas <Icon name="arrow-up-right" size={19}/>
                 </button>
-                <Link className="pf-hero-secondary" href="/para-empresas">Tenho uma empresa <Icon name="arrow-right" size={17}/></Link>
+                <Link className="pf-hero-secondary" href="/para-empresas">Consultoria para Empresas <Icon name="arrow-right" size={17}/></Link>
               </div>
               <div className="pf-hero-bottomline"><Icon name="sparkles" size={17}/> Uma vitrine feita para facilitar sua escolha.</div>
             </div>
@@ -130,7 +138,7 @@ export default function Home() {
         <section className="pf-offers pf-section" id="ofertas" ref={offersRef} aria-labelledby="offers-title">
           <div className="pf-shell">
             <div className="pf-section-heading">
-              <div><span className="pf-eyebrow"><span className="pf-eyebrow-line"/> EXPLORAR A VITRINE</span><h2 id="offers-title">Encontre seu <span>próximo achado.</span></h2></div>
+              <div><span className="pf-eyebrow"><span className="pf-eyebrow-line"/> EXPLORAR A VITRINE</span><h2 id="offers-title">Ofertas em Destaque <span>dos Parceiros</span></h2></div>
               <p>Explore por categoria ou pesquise algo específico. As ofertas levam você diretamente à loja parceira.</p>
             </div>
 
@@ -160,15 +168,15 @@ export default function Home() {
         <section className="pf-business pf-section" aria-labelledby="business-title">
           <div className="pf-shell">
             <div className="pf-business-head">
-              <div><span className="pf-eyebrow"><span className="pf-eyebrow-line"/> PARA QUEM VENDE</span><h2 id="business-title">Sua oferta merece<br/><span>ser percebida.</span></h2></div>
+              <div><span className="pf-eyebrow"><span className="pf-eyebrow-line"/> PARA QUEM VENDE</span><h2 id="business-title">Como ajudamos<br/><span>a sua empresa</span></h2></div>
               <p>Não basta ter um bom produto. É preciso comunicar o valor certo, para as pessoas certas. A Pricefly ajuda a sua marca a fazer isso.</p>
             </div>
             <div className="pf-services-grid">
-              <div className="pf-service-card"><span className="pf-service-number">01 / ESTRATÉGIA</span><div className="pf-service-icon"><Icon name="target" size={26}/></div><h3>Posicionamento que conecta.</h3><p>Destacamos o que torna sua oferta relevante para que o consumidor enxergue mais valor.</p><span className="pf-service-line"/></div>
-              <div className="pf-service-card"><span className="pf-service-number">02 / COMUNICAÇÃO</span><div className="pf-service-icon"><Icon name="pen" size={26}/></div><h3>Mensagens que convencem.</h3><p>Refinamos títulos, textos e argumentos para deixar seus diferenciais claros e atrativos.</p><span className="pf-service-line"/></div>
-              <div className="pf-service-card"><span className="pf-service-number">03 / VISIBILIDADE</span><div className="pf-service-icon"><Icon name="megaphone" size={26}/></div><h3>Mais espaço para aparecer.</h3><p>Apresentamos suas oportunidades na vitrine da Pricefly e aproximamos sua marca de novos públicos.</p><span className="pf-service-line"/></div>
+              <div className="pf-service-card"><span className="pf-service-number">01 / ESTRATÉGIA</span><div className="pf-service-icon"><Icon name="target" size={26}/></div><h3>Estratégia</h3><p>Refinamos o posicionamento dos seus produtos para aumentar o valor percebido pelo consumidor.</p><span className="pf-service-line"/></div>
+              <div className="pf-service-card"><span className="pf-service-number">02 / COMUNICAÇÃO</span><div className="pf-service-icon"><Icon name="pen" size={26}/></div><h3>Comunicação</h3><p>Criamos narrativas e textos focados em conversão que destacam os seus diferenciais competitivos.</p><span className="pf-service-line"/></div>
+              <div className="pf-service-card"><span className="pf-service-number">03 / DIVULGAÇÃO</span><div className="pf-service-icon"><Icon name="megaphone" size={26}/></div><h3>Divulgação</h3><p>Ampliamos o seu alcance destacando as suas ofertas otimizadas na nossa vitrine para novos públicos.</p><span className="pf-service-line"/></div>
             </div>
-            <div className="pf-cta-banner"><div><span className="pf-eyebrow pf-eyebrow-light">SUA MARCA PODE IR MAIS LONGE</span><h2>Vamos fazer sua próxima<br/>oferta acontecer?</h2><p>Conte sobre o seu negócio. Vamos conversar sobre como destacar o que você vende.</p></div><Link href="/para-empresas#contato" className="pf-btn pf-btn-accent pf-btn-lg">Quero destacar minha empresa <Icon name="arrow-up-right" size={19}/></Link><div className="pf-banner-circle" aria-hidden="true"/></div>
+            <div className="pf-cta-banner"><div><span className="pf-eyebrow pf-eyebrow-light">SUA MARCA PODE IR MAIS LONGE</span><h2>Leve suas ofertas ainda<br/>mais longe</h2><p>Conte sobre o seu negócio. Vamos conversar sobre como destacar o que você vende.</p></div><Link href="/para-empresas#contato" className="pf-btn pf-btn-accent pf-btn-lg">Quero destacar minha empresa <Icon name="arrow-up-right" size={19}/></Link><div className="pf-banner-circle" aria-hidden="true"/></div>
           </div>
         </section>
       </main>

@@ -1,176 +1,183 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { auth, db } from '@/firebase/config';
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore';
 
-type Lead = {
-  id: string;
-  nome: string;
-  email: string;
-  empresa: string;
-  site: string;
-  mensagem: string;
-  dataCriacao: string;
-  status: string;
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import Link from 'next/link';
+import { Brand } from '@/app/components/SiteHeader';
+import { productCategories, leadStatuses, type Product, type Lead } from '@/lib/types';
+import { formattedPrice, validOfferUrl } from '@/app/components/ProductCard';
+import AdminAccess from './AdminAccess';
+import './admin.css';
+
+type User = { email: string };
+const blankProduct = {
+  title: '', category: productCategories[0] as string, price: '', installments: '', image: '', link: '',
+  partnerName: '', partnerLogoUrl: '', customCTA: '', badge: '', rating: '', numbersRating: '', isHighlighted: false, active: true,
 };
+const blankLead = { nome: '', email: '', empresa: '', site: '', mensagem: '' };
+type ProductForm = typeof blankProduct;
+
+async function api<T>(url: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(url, { ...options, cache: 'no-store', headers: { 'Content-Type': 'application/json', ...options?.headers } });
+  const data = await response.json();
+  if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event('pricefly-session-expired'));
+    throw new Error(data.error || 'Não foi possível concluir a operação.');
+  }
+  return data;
+}
 
 export default function AdminPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'produtos' | 'leads'>('produtos');
-
-  // Login States
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  // Produto States
-  const [formData, setFormData] = useState({
-    title: '', category: 'Casa, Móveis e Decoração', price: '', installments: '',
-    image: '', link: '', partnerName: '', partnerLogoUrl: '', customCTA: '', isHighlighted: false
-  });
-
-  // Leads States
+  const [tab, setTab] = useState<'produtos' | 'leads' | 'acessos'>('produtos');
+  const [products, setProducts] = useState<Product[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [productPage, setProductPage] = useState(1);
+  const [leadPage, setLeadPage] = useState(1);
+  const [productPages, setProductPages] = useState(0);
+  const [leadPages, setLeadPages] = useState(0);
+  const [productTotal, setProductTotal] = useState(0);
+  const [leadTotal, setLeadTotal] = useState(0);
+  const [listLoading, setListLoading] = useState(true);
+  const [form, setForm] = useState<ProductForm>(blankProduct);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [leadForm, setLeadForm] = useState(blankLead);
+  const [showLeadForm, setShowLeadForm] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-      if (currentUser) fetchLeads(); // Busca os leads assim que logar
-    });
-    return () => unsubscribe();
+    let alive = true;
+    const expire = () => { setUser(null); setProducts([]); setLeads([]); };
+    window.addEventListener('pricefly-session-expired', expire);
+    fetch('/api/auth', { cache: 'no-store' }).then(async response => {
+      if (response.status === 401) return;
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      if (alive) setUser(data.user);
+    }).catch(() => { if (alive) setError('Não foi possível verificar o acesso. Confira a conexão com o servidor.'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; window.removeEventListener('pricefly-session-expired', expire); };
   }, []);
 
-  const fetchLeads = async () => {
-    setLoadingLeads(true);
-    try {
-      const q = query(collection(db, "leads"), orderBy("dataCriacao", "desc"));
-      const querySnapshot = await getDocs(q);
-      const leadsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[];
-      setLeads(leadsData);
-    } catch (error) {
-      console.error("Erro ao buscar leads:", error);
-    } finally {
-      setLoadingLeads(false);
-    }
-  };
+  const fetchLists = useCallback(() => Promise.all([
+    api<{products: Product[]; total: number; pages: number}>(`/api/products?admin=1&limit=20&page=${productPage}`),
+    api<{leads: Lead[]; total: number; pages: number}>(`/api/leads?limit=20&page=${leadPage}`),
+  ]), [productPage, leadPage]);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-      alert('Erro ao fazer login. Verifique as credenciais.');
-    }
-  };
+  const applyLists = useCallback(([p, l]: Awaited<ReturnType<typeof fetchLists>>) => {
+    setProducts(p.products); setProductTotal(p.total); setProductPages(p.pages);
+    setLeads(l.leads); setLeadTotal(l.total); setLeadPages(l.pages);
+  }, []);
 
-  const handleAddProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await addDoc(collection(db, 'products'), {
-        ...formData,
-        rating: '5.0', numbersRating: '(1)', badge: 'Frete Grátis', badgeBg: '#6a994e', badgeColor: '#fff',
-      });
-      alert('Produto parceiro cadastrado com sucesso!');
-      setFormData({
-        title: '', category: 'Casa, Móveis e Decoração', price: '', installments: '',
-        image: '', link: '', partnerName: '', partnerLogoUrl: '', customCTA: '', isHighlighted: false
-      });
-    } catch (error) {
-      alert('Erro ao cadastrar produto: ' + (error as Error).message);
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const target = e.target as HTMLInputElement;
-    const value = target.type === 'checkbox' ? target.checked : target.value;
-    setFormData({ ...formData, [target.name]: value });
-  };
-
-  if (loading) return <div style={{ textAlign: 'center', marginTop: '50px' }}>Carregando...</div>;
-
-  // TELA DE LOGIN
-  if (!user) {
-    return (
-      <div style={{ maxWidth: '400px', margin: '100px auto', padding: '30px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-        <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>Admin Pricefly</h2>
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <input type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} required style={inputStyle} />
-          <input type="password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required style={inputStyle} />
-          <button type="submit" style={buttonStyle}>Entrar no Painel</button>
-        </form>
-      </div>
-    );
+  async function loadLists() {
+    try { applyLists(await fetchLists()); }
+    catch (e) { setError((e as Error).message); }
+    finally { setListLoading(false); }
   }
 
-  // TELA DO PAINEL ADMIN
-  return (
-    <div style={{ maxWidth: '900px', margin: '60px auto', padding: '20px', background: '#fff', borderRadius: '12px' }}>
-      
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-        <h2>Painel Pricefly</h2>
-        <button onClick={() => signOut(auth)} style={{ ...buttonStyle, background: '#ef4444', padding: '8px 16px' }}>Sair</button>
-      </div>
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    fetchLists().then(result => { if (alive) applyLists(result); })
+      .catch(e => { if (alive) setError((e as Error).message); })
+      .finally(() => { if (alive) setListLoading(false); });
+    return () => { alive = false; };
+  }, [user, fetchLists, applyLists]);
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '30px', borderBottom: '2px solid #f3f4f6' }}>
-        <button onClick={() => setActiveTab('produtos')} style={{ ...tabStyle, borderBottom: activeTab === 'produtos' ? '3px solid #386641' : 'none', fontWeight: activeTab === 'produtos' ? 'bold' : 'normal' }}>Cadastrar Ofertas</button>
-        <button onClick={() => { setActiveTab('leads'); fetchLeads(); }} style={{ ...tabStyle, borderBottom: activeTab === 'leads' ? '3px solid #386641' : 'none', fontWeight: activeTab === 'leads' ? 'bold' : 'normal' }}>Leads B2B ({leads.length})</button>
-      </div>
-
-      {activeTab === 'produtos' && (
-        <form onSubmit={handleAddProduct} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          <div style={{ gridColumn: '1 / -1' }}><h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '10px' }}>Dados do Parceiro</h3></div>
-          <input name="partnerName" placeholder="Nome da Empresa (Ex: Loja do João)" value={formData.partnerName} onChange={handleChange} style={inputStyle} />
-          <input name="partnerLogoUrl" placeholder="URL do Logotipo da Empresa" value={formData.partnerLogoUrl} onChange={handleChange} style={inputStyle} />
-          <input name="customCTA" placeholder="Texto do Botão (Ex: Comprar na Loja)" value={formData.customCTA} onChange={handleChange} style={inputStyle} />
-          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-            <input type="checkbox" name="isHighlighted" checked={formData.isHighlighted} onChange={handleChange} style={{ width: '20px', height: '20px' }} />
-            Destacar oferta com borda verde?
-          </label>
-
-          <div style={{ gridColumn: '1 / -1', marginTop: '20px' }}><h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '10px' }}>Dados do Produto</h3></div>
-          <input name="title" placeholder="Título do Produto" value={formData.title} onChange={handleChange} required style={{ ...inputStyle, gridColumn: '1 / -1' }} />
-          <select name="category" value={formData.category} onChange={handleChange} style={inputStyle}>
-            <option value="Casa, Móveis e Decoração">Casa, Móveis e Decoração</option>
-            <option value="Eletrodomésticos">Eletrodomésticos</option>
-            <option value="Esportes e Fitness">Esportes e Fitness</option>
-            <option value="Pet Shop">Pet Shop</option>
-            <option value="Saúde">Saúde</option>
-          </select>
-          <input name="price" placeholder="Preço (ex: R$ 390,92)" value={formData.price} onChange={handleChange} required style={inputStyle} />
-          <input name="installments" placeholder="Parcelamento (ex: 12x R$38,24)" value={formData.installments} onChange={handleChange} style={inputStyle} />
-          <input name="image" placeholder="URL da Imagem do Produto" value={formData.image} onChange={handleChange} required style={inputStyle} />
-          <input name="link" placeholder="Link Seguro de Compra" value={formData.link} onChange={handleChange} required style={{ ...inputStyle, gridColumn: '1 / -1' }} />
-
-          <button type="submit" style={{ ...buttonStyle, gridColumn: '1 / -1', padding: '15px' }}>Adicionar Oferta à Vitrine</button>
-        </form>
-      )}
-
-      {activeTab === 'leads' && (
-        <div>
-          {loadingLeads ? <p>Carregando leads...</p> : leads.length === 0 ? <p>Nenhum contato recebido ainda.</p> : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {leads.map(lead => (
-                <div key={lead.id} style={{ padding: '20px', border: '1px solid #e5e7eb', borderRadius: '8px', background: '#f9fafb' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                    <h4 style={{ margin: 0, fontSize: '18px', color: '#111827' }}>{lead.empresa} - {lead.nome}</h4>
-                    <span style={{ fontSize: '12px', color: '#6b7280' }}>{new Date(lead.dataCriacao).toLocaleDateString('pt-BR')}</span>
-                  </div>
-                  <p style={{ margin: '5px 0', fontSize: '14px' }}><strong>E-mail:</strong> {lead.email}</p>
-                  <p style={{ margin: '5px 0', fontSize: '14px' }}><strong>Site:</strong> <a href={lead.site} target="_blank" rel="noreferrer" style={{ color: '#3b82f6' }}>{lead.site}</a></p>
-                  <p style={{ marginTop: '15px', fontStyle: 'italic', color: '#4b5563', backgroundColor: '#fff', padding: '10px', borderLeft: '3px solid #386641' }}>"{lead.mensagem}"</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+  async function login(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError('');
+    try {
+      const result = await api<{ user: User }>('/api/auth', { method: 'POST', body: JSON.stringify({ email, password }) });
+      setUser(result.user); setPassword('');
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function logout() {
+    setBusy(true); setError('');
+    try { await api('/api/auth', { method: 'DELETE' }); setUser(null); setProducts([]); setLeads([]); setForm(blankProduct); setEditing(null); setLeadForm(blankLead); setNotice(''); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function saveProduct(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    try {
+      await api(editing ? `/api/products/${editing}` : '/api/products', { method: editing ? 'PUT' : 'POST', body: JSON.stringify(form) });
+      setNotice(editing ? 'Produto atualizado na vitrine.' : 'Produto cadastrado na vitrine.');
+      setForm(blankProduct); setEditing(null); await loadLists();
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  function editProduct(product: Product) {
+    setForm(Object.fromEntries(Object.entries(blankProduct).map(([key, fallback]) => [key, product[key as keyof Product] ?? fallback])) as ProductForm);
+    setForm(current => ({ ...current, price: String(product.price) })); setEditing(product.id); setNotice('');
+    document.getElementById('product-form')?.scrollIntoView({ behavior: 'smooth' });
+  }
+  async function setStatus(lead: Lead, status: string) {
+    setBusy(true); setError('');
+    try { await api(`/api/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }); await loadLists(); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function saveLead(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError(''); setNotice('');
+    try {
+      await api('/api/leads', { method: 'POST', body: JSON.stringify(leadForm) });
+      setLeadForm(blankLead); setShowLeadForm(false); setNotice('Lead cadastrado.'); await loadLists();
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  const productField = (name: keyof ProductForm, label: string, required = false, type = 'text') => (
+    <label className="pf-field">{label}<input name={name} type={type} value={String(form[name])} onChange={e => setForm({ ...form, [name]: e.target.value })} required={required} maxLength={name === 'link' ? 5000 : name === 'image' || name === 'partnerLogoUrl' ? 2000 : 250} /></label>
   );
+  const leadFields = <>
+    {(['nome', 'email', 'empresa', 'site'] as const).map((name, i) => <label className="pf-field" key={name}>{['Seu nome', 'E-mail', 'Empresa', 'Site ou link do produto'][i]}<input name={name} type={name === 'email' ? 'email' : 'text'} value={leadForm[name]} onChange={e => setLeadForm({ ...leadForm, [name]: e.target.value })} required maxLength={name === 'site' ? 500 : name === 'nome' ? 100 : name === 'empresa' ? 140 : 180}/></label>)}
+    <label className="pf-field pf-admin-wide">Mensagem<textarea value={leadForm.mensagem} onChange={e => setLeadForm({ ...leadForm, mensagem: e.target.value })} required maxLength={2500}/></label>
+  </>;
+
+  return <div className="pf-site pf-admin">
+    <header className="pf-admin-header"><Brand/><Link href="/">Ver vitrine ↗</Link>{user && <button className="pf-btn pf-btn-dark" onClick={logout} disabled={busy}>Sair</button>}</header>
+    <main className={user ? 'pf-admin-main' : 'pf-admin-login'}>
+      {loading ? <p role="status">Verificando acesso...</p> : <>
+        {error && <div className="pf-form-error" role="alert">{error}</div>}
+        {notice && <div className="pf-admin-notice" role="status">{notice}</div>}
+        {!user ? <section className="pf-contact-card"><span className="pf-eyebrow">ACESSO RESTRITO</span><h1>Admin Pricefly</h1><p>Entre para gerenciar suas ofertas e contatos.</p><form className="pf-lead-form" onSubmit={login}>
+          <label className="pf-field">E-mail<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required maxLength={180}/></label>
+          <label className="pf-field">Senha<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required maxLength={256}/></label>
+          <button className="pf-btn pf-btn-dark" disabled={busy}>{busy ? 'Entrando...' : 'Entrar no painel'}</button>
+        <Link href="/admin/recuperar-senha" className="pf-admin-text-link">Esqueci minha senha</Link>
+        </form></section> : <>
+          <div className="pf-admin-heading"><div><span className="pf-eyebrow">ÁREA ADMINISTRATIVA</span><h1>Sua vitrine, sob controle.</h1><p>{user.email}</p></div><button className="pf-btn pf-btn-dark" disabled={listLoading || busy} onClick={() => { setListLoading(true); void loadLists(); }}>Atualizar dados</button></div>
+          <nav className="pf-admin-tabs" aria-label="Seções do painel"><button className={tab === 'produtos' ? 'is-active' : ''} onClick={() => { setTab('produtos'); setNotice(''); }}>Produtos ({productTotal})</button><button className={tab === 'leads' ? 'is-active' : ''} onClick={() => { setTab('leads'); setNotice(''); }}>Leads ({leadTotal})</button><button className={tab === 'acessos' ? 'is-active' : ''} onClick={() => { setTab('acessos'); setNotice(''); }}>Acessos e senhas</button></nav>
+          {tab === 'acessos' ? <AdminAccess onSignedOut={message => { setUser(null); setProducts([]); setLeads([]); setNotice(message); }}/> : tab === 'produtos' ? <>
+            <section className="pf-contact-card" id="product-form"><h2>{editing ? 'Editar produto' : 'Cadastrar oferta'}</h2><form onSubmit={saveProduct} className="pf-admin-form">
+              {productField('partnerName', 'Nome do parceiro')}{productField('partnerLogoUrl', 'URL da logo do parceiro', false, 'url')}
+              <div className="pf-admin-wide">{productField('title', 'Título do produto', true)}</div>
+              <label className="pf-field">Categoria<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{productCategories.map(c => <option key={c}>{c}</option>)}</select></label>
+              {productField('price', 'Preço (ex.: 390,92)', true)}{productField('installments', 'Parcelamento')}{productField('customCTA', 'Texto do botão')}
+              {productField('image', 'URL da imagem', true, 'url')}{productField('link', 'Link de compra', true, 'url')}
+              {productField('badge', 'Selo (ex.: Frete grátis)')}{productField('rating', 'Avaliação (opcional, 0 a 5)')}{productField('numbersRating', 'Número de avaliações')}
+              <div className="pf-admin-checks"><label><input type="checkbox" checked={form.isHighlighted} onChange={e => setForm({ ...form, isHighlighted: e.target.checked })}/> Destacar oferta</label><label><input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })}/> Exibir na vitrine</label></div>
+              <div className="pf-admin-actions pf-admin-wide"><button className="pf-btn pf-btn-dark" disabled={busy}>{busy ? 'Salvando...' : editing ? 'Salvar alterações' : 'Adicionar oferta à vitrine'}</button>{editing && <button type="button" className="pf-btn" onClick={() => { setEditing(null); setForm(blankProduct); }}>Cancelar edição</button>}</div>
+            </form></section>
+            <section className="pf-admin-list"><h2>Produtos cadastrados</h2>{listLoading ? <p role="status">Carregando produtos...</p> : products.length ? products.map(product => <article className="pf-admin-product" key={product.id}><div><h3>{product.title}</h3><p>{product.category} · {formattedPrice(product.price)}</p><span className="pf-admin-tag">{product.active ? 'Na vitrine' : 'Oculto'}{product.isHighlighted ? ' · Destaque' : ''}</span></div><button className="pf-btn pf-btn-dark" disabled={busy} onClick={() => editProduct(product)}>Editar</button></article>) : <p>Nenhum produto cadastrado.</p>}</section>
+            <Pagination page={productPage} pages={productPages} disabled={listLoading || busy} onChange={page => { setListLoading(true); setProductPage(page); }}/>
+          </> : <>
+            <div className="pf-admin-heading"><h2>Contatos recebidos</h2><button className="pf-btn pf-btn-dark" onClick={() => setShowLeadForm(!showLeadForm)}>{showLeadForm ? 'Fechar cadastro' : 'Cadastrar lead'}</button></div>
+            {showLeadForm && <form className="pf-contact-card pf-admin-form" onSubmit={saveLead}>{leadFields}<button className="pf-btn pf-btn-dark pf-admin-wide" disabled={busy}>{busy ? 'Salvando...' : 'Cadastrar lead'}</button></form>}
+            <div className="pf-admin-list">{listLoading ? <p role="status">Carregando leads...</p> : leads.length ? leads.map(lead => <article className="pf-contact-card pf-admin-lead" key={lead.id}><div className="pf-admin-heading"><div><h3>{lead.empresa}</h3><p>{lead.nome} · {new Date(lead.dataCriacao).toLocaleDateString('pt-BR')}</p></div><label className="pf-field">Status<select value={lead.status} disabled={busy} onChange={e => setStatus(lead, e.target.value)}>{leadStatuses.map(s => <option key={s}>{s}</option>)}</select></label></div><p><strong>E-mail:</strong> <a href={`mailto:${lead.email}`}>{lead.email}</a></p><p><strong>Site ou produto:</strong> {validOfferUrl(lead.site) ? <a href={validOfferUrl(lead.site)!} target="_blank" rel="noopener noreferrer">{lead.site}</a> : lead.site}</p><blockquote>{lead.mensagem}</blockquote></article>) : <p>Nenhum contato recebido ainda.</p>}</div>
+            <Pagination page={leadPage} pages={leadPages} disabled={listLoading || busy} onChange={page => { setListLoading(true); setLeadPage(page); }}/>
+          </>}
+        </>}
+      </>}
+    </main>
+  </div>;
 }
 
-const inputStyle = { padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '15px', width: '100%', boxSizing: 'border-box' as const };
-const buttonStyle = { borderRadius: '8px', border: 'none', background: '#386641', color: '#fff', fontSize: '16px', cursor: 'pointer', fontWeight: 'bold' };
-const tabStyle = { padding: '10px 20px', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px', outline: 'none' };
+function Pagination({ page, pages, disabled, onChange }: { page: number; pages: number; disabled: boolean; onChange: (page: number) => void }) {
+  if (pages <= 1) return null;
+  return <nav className="pf-admin-pagination" aria-label="Paginação"><button className="pf-btn" disabled={disabled || page === 1} onClick={() => onChange(page - 1)}>Anterior</button><span>Página {page} de {pages}</span><button className="pf-btn" disabled={disabled || page >= pages} onClick={() => onChange(page + 1)}>Próxima</button></nav>;
+}

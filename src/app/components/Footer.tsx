@@ -24,7 +24,7 @@ export default function Footer() {
         </div>
         <div className="pf-footer-bottom">
           <span>© {new Date().getFullYear()} Pricefly. Todos os direitos reservados.</span>
-          <span>Descubra mais. Escolha melhor.</span>
+          <span>Leve suas ofertas ainda mais longe</span>
         </div>
       </div>
     </footer>
